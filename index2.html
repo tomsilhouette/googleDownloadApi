@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Drive API Quickstart</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <p>Drive API Quickstart</p>
+
+    <!--Add buttons to initiate auth sequence and sign out-->
+    <button id="authorize_button" onclick="handleAuthClick()">Authorize</button>
+    <button id="find_files" onclick="handleAuthClickForFile()">Files</button>
+    <button id="signout_button" onclick="handleSignoutClick()">Sign Out</button>
+    <button id="name_btn" onclick="showName()">Name</button>
+    <button id="download_btn" onclick="downloadFile()">Download</button>
+
+    <pre id="content" style="white-space: pre-wrap"></pre>
+    <p id="filecontent"></p>
+
+    <script type="text/javascript">
+      /* exported gapiLoaded */
+      /* exported gisLoaded */
+      /* exported handleAuthClick */
+      /* exported handleSignoutClick */
+
+      // TODO(developer): Set to client ID and API key from the Developer Console
+      const CLIENT_ID =
+        '270241913150-a9c105or25b8ljg1rkju7llkqve2k5sk.apps.googleusercontent.com';
+      const API_KEY = 'AIzaSyA5xdWcglTJAS2TY9ijwcKLt7E_IyCmlJs';
+
+      // Discovery doc URL for APIs used by the quickstart
+      const DISCOVERY_DOC =
+        'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+
+      // Authorization scopes required by the API; multiple scopes can be
+      // included, separated by spaces.
+      const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+
+      let tokenClient;
+      let gapiInited = false;
+      let gisInited = false;
+
+      document.getElementById('authorize_button').style.visibility = 'hidden';
+      document.getElementById('signout_button').style.visibility = 'hidden';
+
+      /**
+       * Callback after api.js is loaded.
+       */
+      function gapiLoaded() {
+        gapi.load('client', initializeGapiClient);
+      }
+
+      function showName() {
+        console.log('fileFoundId', fileFoundId);
+      }
+      /**
+       * Callback after the API client is loaded. Loads the
+       * discovery doc to initialize the API.
+       */
+      async function initializeGapiClient() {
+        await gapi.client.init({
+          apiKey: API_KEY,
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        maybeEnableButtons();
+      }
+
+      /**
+       * Callback after Google Identity Services are loaded.
+       */
+      function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: '', // defined later
+        });
+        gisInited = true;
+        maybeEnableButtons();
+      }
+
+      /**
+       * Enables user interaction after all libraries are loaded.
+       */
+      function maybeEnableButtons() {
+        if (gapiInited && gisInited) {
+          document.getElementById('authorize_button').style.visibility =
+            'visible';
+        }
+      }
+
+      /**
+       *  Sign in the user upon button click.
+       */
+      function handleAuthClick() {
+        tokenClient.callback = async (resp) => {
+          if (resp.error !== undefined) {
+            throw resp;
+          }
+          document.getElementById('signout_button').style.visibility =
+            'visible';
+          document.getElementById('authorize_button').innerText = 'Refresh';
+          await listFiles();
+        };
+
+        if (gapi.client.getToken() === null) {
+          // Prompt the user to select a Google Account and ask for consent to share their data
+          // when establishing a new session.
+          tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+          // Skip display of account chooser and consent dialog for an existing session.
+          tokenClient.requestAccessToken({ prompt: '' });
+        }
+      }
+
+      function handleAuthClickForFile() {
+        tokenClient.callback = async (resp) => {
+          if (resp.error !== undefined) {
+            throw resp;
+          }
+          document.getElementById('signout_button').style.visibility =
+            'visible';
+          document.getElementById('find_files').innerText = 'Getin Tom!';
+          await findSpecificFile();
+        };
+
+        if (gapi.client.getToken() === null) {
+          // Prompt the user to select a Google Account and ask for consent to share their data
+          // when establishing a new session.
+          tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+          // Skip display of account chooser and consent dialog for an existing session.
+          tokenClient.requestAccessToken({ prompt: '' });
+        }
+      }
+
+      async function findSpecificFile() {
+        let response;
+        let fileName = 'SCD_0.1.30_MA.pkg';
+
+        try {
+          response = await gapi.client.drive.files.list({
+            pageSize: 10,
+            fields: 'files(id, name)',
+            q: `'1ddcQN6lQpGpQ6y4o7h2r1vRamdEzLrEv' in parents and name = 'SCD_0.1.30_MA.pkg'`, // Query for specific file by name and ID
+            driveId: '0AObDN4ekOwbDUk9PVA', // Replace <shared_drive_id> with the actual Shared Drive ID
+            includeItemsFromAllDrives: true,
+            supportsAllDrives: true,
+            corpora: 'drive',
+          });
+        } catch (err) {
+          document.getElementById('content').innerText = err.message;
+          return;
+        }
+        const files = response.result.files;
+        if (!files || files.length == 0) {
+          document.getElementById('content').innerText = 'File not found.';
+          return;
+        }
+
+        let fileFoundId;
+
+        // Flatten to string to display
+        const output = files.reduce((str, file) => {
+          // Set the global variable with the file ID
+          fileFoundId = file.id;
+          return `${str}${file.name} (${file.id})\n`;
+        }, 'Specific File Found:\n');
+        document.getElementById('content').innerText = output;
+        console.log('fileFoundId', fileFoundId);
+        downloadFile(fileFoundId, fileName);
+      }
+
+      /**
+       *  Sign out the user upon button click.
+       */
+      function handleSignoutClick() {
+        const token = gapi.client.getToken();
+        if (token !== null) {
+          google.accounts.oauth2.revoke(token.access_token);
+          gapi.client.setToken('');
+          document.getElementById('content').innerText = '';
+          document.getElementById('authorize_button').innerText = 'Authorize';
+          document.getElementById('signout_button').style.visibility = 'hidden';
+        }
+      }
+
+      /**
+       * Print metadata for first 10 files.
+       */
+      async function listFiles() {
+        let response;
+        try {
+          response = await gapi.client.drive.files.list({
+            pageSize: 100,
+            fields: 'files(id, name)',
+            q: "'1ddcQN6lQpGpQ6y4o7h2r1vRamdEzLrEv' in parents", // Replace <folder_id> with the actual folder ID
+            driveId: '0AObDN4ekOwbDUk9PVA', // Replace <shared_drive_id> with the actual Shared Drive ID
+            includeItemsFromAllDrives: true,
+            supportsAllDrives: true,
+            corpora: 'drive', // This specifies that the query targets a Shared Drive
+          });
+        } catch (err) {
+          document.getElementById('content').innerText = err.message;
+          return;
+        }
+
+        const files = response.result.files;
+        if (!files || files.length == 0) {
+          document.getElementById('content').innerText =
+            'No files found in the folder.';
+          return;
+        }
+
+        // Flatten to string to display
+        const output = files.reduce(
+          (str, file) => `${str}${file.name} (${file.id})\n`,
+          'Files in Shared Drive folder:\n'
+        );
+        document.getElementById('content').innerText = output;
+      }
+      console.log('fileFoundId', fileFoundId);
+
+      function downloadFile(fileFoundId, fileName) {
+        let fileType = 'pkg'
+        console.log('STARTING DOWNLOAD');
+        console.log('fileFoundId 2', fileFoundId);
+
+        if (!fileFoundId) {
+          console.log('File ID is required to download a file.');
+          return;
+        }
+
+        // Construct the download URL
+        const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileFoundId}?alt=media`;
+
+        // Use the access token to authorize the download
+        const accessToken = gapi.auth.getToken().access_token;
+        if (!accessToken) {
+          console.log('Access token is missing, please authorize first.');
+          return;
+        }
+
+        // Perform the download
+        fetch(downloadUrl, {
+          headers: new Headers({ Authorization: 'Bearer ' + accessToken }),
+        })
+          .then((response) => response.blob())
+          .then((blob) => {
+            // Create a link to download the file
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `${fileName}`; // You can set a specific file name here
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+          })
+          .catch((error) => console.error('Error downloading file:', error));
+      }
+    </script>
+    <script
+      async
+      defer
+      src="https://apis.google.com/js/api.js"
+      onload="gapiLoaded()"
+    ></script>
+    <script
+      async
+      defer
+      src="https://accounts.google.com/gsi/client"
+      onload="gisLoaded()"
+    ></script>
+  </body>
+</html>
